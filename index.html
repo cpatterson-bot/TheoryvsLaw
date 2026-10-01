@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scientific Theories vs. Laws: Snake Review Game</title>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --accent: #22c55e;
+      --apple: #ef4444;
+      --obstacle: #64748b;
+      --bg: #1e293b;
+      --card-bg: #0f172a;
+      --text: #f8fafc;
+      --border: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+
+    header { text-align: center; margin-bottom: 12px; }
+    header h1 { color: #38bdf8; font-size: 1.8rem; margin-bottom: 4px; }
+    header p { color: #94a3b8; font-size: 0.95rem; }
+
+    /* Dashboard & Stats */
+    .dashboard { display: flex; gap: 20px; margin-bottom: 12px; background: var(--card-bg); padding: 12px 24px; border-radius: 10px; border: 1px solid var(--border); }
+    .stat { text-align: center; }
+    .stat-label { font-size: 0.75rem; text-transform: uppercase; color: #94a3b8; font-weight: bold; }
+    .stat-value { font-size: 1.25rem; font-weight: bold; color: #fbbf24; }
+
+    /* Canvas Grid Container */
+    .game-area { position: relative; display: flex; flex-direction: column; align-items: center; }
+    canvas { background-color: #020617; border: 3px solid var(--border); border-radius: 10px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+
+    /* On-Screen Controls */
+    .dpad { margin-top: 12px; display: grid; grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(2, 50px); gap: 6px; }
+    .dpad-btn { background: #334155; color: white; border: none; border-radius: 8px; font-size: 1.2rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; }
+    .dpad-btn:active { background: #475569; }
+    .btn-up { grid-column: 2; grid-row: 1; }
+    .btn-left { grid-column: 1; grid-row: 2; }
+    .btn-down { grid-column: 2; grid-row: 2; }
+    .btn-right { grid-column: 3; grid-row: 2; }
+
+    /* Modal Overlays */
+    .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.82); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
+    .modal { background: #0f172a; border-radius: 14px; padding: 25px; max-width: 600px; width: 100%; border: 2px solid #38bdf8; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+    .modal-header { font-size: 0.85rem; text-transform: uppercase; color: #38bdf8; font-weight: bold; margin-bottom: 8px; }
+    .question-text { font-size: 1.1rem; font-weight: 600; color: white; margin-bottom: 18px; line-height: 1.4; }
+
+    .options-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+    .option-btn { background: #1e293b; color: white; border: 1px solid var(--border); padding: 12px 16px; border-radius: 8px; font-size: 0.95rem; text-align: left; cursor: pointer; transition: all 0.15s ease; }
+    .option-btn:hover { background: #334155; border-color: #38bdf8; }
+    .option-btn.correct { background: #15803d !important; border-color: #22c55e !important; color: white; }
+    .option-btn.wrong { background: #991b1b !important; border-color: #ef4444 !important; color: white; }
+
+    .feedback-banner { font-weight: bold; padding: 10px; border-radius: 6px; margin-bottom: 12px; display: none; text-align: center; font-size: 0.95rem; }
+    .feedback-banner.correct { background: #166534; color: #bbf7d0; display: block; }
+    .feedback-banner.wrong { background: #991b1b; color: #fecaca; display: block; }
+
+    .continue-btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px; border-radius: 8px; font-weight: bold; width: 100%; font-size: 1rem; cursor: pointer; display: none; }
+    .continue-btn:hover { background: #0284c7; color: white; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🐍 Theory vs. Law: Snake Review</h1>
+    <p>Eat apples to trigger questions! The snake speeds up as you progress—don't crash!</p>
+  </header>
+
+  <div class="dashboard">
+    <div class="stat">
+      <div class="stat-label">Apples Eaten</div>
+      <div class="stat-value" id="applesStat">0 / 15</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Snake Speed</div>
+      <div class="stat-value" id="speedStat">Slow (1x)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Snake Length</div>
+      <div class="stat-value" id="lengthStat">4</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Review Score</div>
+      <div class="stat-value" id="scoreStat">0</div>
+    </div>
+  </div>
+
+  <div class="game-area">
+    <canvas id="gameCanvas" width="480" height="480"></canvas>
+
+    <div class="dpad">
+      <button class="dpad-btn btn-up" onclick="handleDpad('UP')">▲</button>
+      <button class="dpad-btn btn-left" onclick="handleDpad('LEFT')">◄</button>
+      <button class="dpad-btn btn-down" onclick="handleDpad('DOWN')">▼</button>
+      <button class="dpad-btn btn-right" onclick="handleDpad('RIGHT')">►</button>
+    </div>
+  </div>
+
+  <!-- Question Popup Modal -->
+  <div class="overlay" id="quizModal" style="display: none;">
+    <div class="modal">
+      <div class="modal-header" id="modalProgress">Question 1 of 15</div>
+      <div class="question-text" id="modalQuestion">Question goes here?</div>
+      
+      <div class="options-grid" id="modalOptions"></div>
+      
+      <div class="feedback-banner" id="feedbackBanner"></div>
+      <button class="continue-btn" id="continueBtn" onclick="closeModal()">Continue Snake Game ▶</button>
+    </div>
+  </div>
+
+  <!-- Funny Game Over Modal -->
+  <div class="overlay" id="gameOverModal" style="display: none;">
+    <div class="modal" style="text-align: center; border-color: #ef4444;">
+      <h2 style="color: #ef4444; margin-bottom: 10px; font-size: 1.8rem;">💥 KABOOM! GAME OVER! 💥</h2>
+      <p style="margin-bottom: 15px; font-size: 1.1rem; color: #fca5a5; font-style: italic;" id="funnyText">Funny message goes here!</p>
+      <p style="margin-bottom: 20px; color: #cbd5e1; font-size: 0.95rem;" id="gameOverStats">Score: 0 | Apples: 0/15</p>
+      <button class="continue-btn" style="display: block; background: #ef4444; color: white;" onclick="resetGame()">Try Again 🔄</button>
+    </div>
+  </div>
+
+  <!-- Game Win Modal -->
+  <div class="overlay" id="winModal" style="display: none;">
+    <div class="modal" style="text-align: center; border-color: #22c55e;">
+      <h2 style="color: #22c55e; margin-bottom: 10px; font-size: 1.8rem;">🎉 Review Completed!</h2>
+      <p style="margin-bottom: 15px; color: #cbd5e1;" id="winSummary">You devoured all 15 knowledge apples and completed the quiz review!</p>
+      <button class="continue-btn" style="display: block; background: #22c55e; color: white;" onclick="resetGame()">Play Again 🔄</button>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------
+    // 1. QUIZ DATASET
+    // -----------------------------------------------------------------
+    const quizQuestions = [
+      {
+        q: "1. What is the primary functional difference between a scientific law and a scientific theory?",
+        options: [
+          "A law is a proven theory, while a theory is an unproven guess.",
+          "A law describes WHAT happens under specific conditions, while a theory explains WHY or HOW it occurs.",
+          "A law only applies in physical chemistry, while a theory applies across all branches of science.",
+          "A law can never be changed, whereas a theory is updated regularly."
+        ],
+        answer: 1
+      },
+      {
+        q: "2. Which of the following characteristics is shared by BOTH scientific laws and scientific theories?",
+        options: [
+          "Both are supported by extensive empirical evidence from repeated experiments and observation.",
+          "Both are written as concise mathematical formulas.",
+          "Both explain the microscopic atomic mechanisms behind natural events.",
+          "Both are educated guesses made prior to running an experiment."
+        ],
+        answer: 0
+      },
+      {
+        q: "3. What happens to existing scientific laws and theories if compelling new experimental evidence emerges?",
+        options: [
+          "The laws are upgraded into theories, and the old theories are discarded.",
+          "Both laws and theories can be revised, updated, or modified to fit the new evidence.",
+          "Laws remain permanently unchanged because they are absolute facts.",
+          "The new evidence is discarded because accepted scientific ideas cannot be altered."
+        ],
+        answer: 1
+      },
+      {
+        q: "4. Which scientific tool is most frequently expressed as a concise mathematical equation or quantitative relationship?",
+        options: ["Scientific Theory", "Scientific Law", "Scientific Hypothesis", "Scientific Framework"],
+        answer: 1
+      },
+      {
+        q: "5. A broad explanatory framework that integrates multiple tested hypotheses to explain complex natural phenomena is a:",
+        options: ["Scientific Law", "Scientific Theory", "Scientific Observation", "Mathematical Proof"],
+        answer: 1
+      },
+      {
+        q: "6. Newton’s Law of Universal Gravitation states that gravitational force decreases with the square of distance (F = G*m1*m2 / r^2). Why is this categorized as a LAW rather than a theory?",
+        options: [
+          "It provides the underlying subatomic mechanism for how gravity bends space.",
+          "It describes the mathematical relationship between mass and force without explaining why mass attracts mass.",
+          "It was stated by Isaac Newton, and all historical scientific ideas are laws.",
+          "It has been proven 100% true and is immune to revision."
+        ],
+        answer: 1
+      },
+      {
+        q: "7. Atomic Theory states that all matter is composed of microscopic particles called atoms. Why is this statement classified as a THEORY?",
+        options: [
+          "Because scientists are still guessing whether atoms exist.",
+          "Because it provides a foundational explanation of how and why matter is structured and behaves.",
+          "Because it relies strictly on mathematical formulas rather than physical evidence.",
+          "Because it has not accumulated enough data to become a law yet."
+        ],
+        answer: 1
+      },
+      {
+        q: "8. The Law of Conservation of Mass states that matter cannot be created or destroyed in an isolated chemical reaction. Which feature makes this statement a LAW?",
+        options: [
+          "It explains why chemical bonds break during reactions.",
+          "It describes what happens to total mass in a closed system without explaining the microscopic cause.",
+          "It was written before scientists discovered subatomic particles.",
+          "It is an unverified assumption about chemical reactions."
+        ],
+        answer: 1
+      },
+      {
+        q: "9. Kinetic Molecular Theory explains that temperature measures average particle kinetic energy. How does this framework function in physical science?",
+        options: [
+          "It gives an equation to calculate temperature without describing particle behavior.",
+          "It explains why and how thermal expansion, heat transfer, and pressure changes occur at the particle level.",
+          "It proves that molecular motion stops completely in all liquids.",
+          "It states an unchangeable rule about energy in the universe."
+        ],
+        answer: 1
+      },
+      {
+        q: "10. Boyle’s Law states that pressure and volume of a gas are inversely proportional (P1V1 = P2V2). Why is this classified as a law?",
+        options: [
+          "It gives a mathematical description of gas behavior without explaining the molecular collisions causing it.",
+          "It explains why gas molecules move faster when thermal energy increases.",
+          "It is a temporary hypothesis that requires more research to become a theory.",
+          "It describes the exact molecular shape of gas particles."
+        ],
+        answer: 0
+      },
+      {
+        q: "11. The Theory of Plate Tectonics states Earth’s crust is divided into rigid plates moving over the asthenosphere. Why is this classified as a scientific theory?",
+        options: [
+          "It calculates the exact speed of tectonic plates using a single equation.",
+          "It provides a comprehensive explanation for how and why earthquakes, volcanoes, and continental drift occur.",
+          "It is an untested assumption made by geologists.",
+          "It will become the Law of Tectonics once more plate measurements are recorded."
+        ],
+        answer: 1
+      },
+      {
+        q: "12. A student argues: 'Kinetic Molecular Theory will eventually upgrade into Kinetic Molecular Law.' Why is this statement false?",
+        options: [
+          "Theories only become laws if expressed as a single mathematical formula.",
+          "Laws and theories serve different purposes; a theory explains why and does not 'upgrade' into a law.",
+          "Kinetic Molecular Theory was disproven by modern atomic research.",
+          "A theory must be tested for at least 200 years before turning into a law."
+        ],
+        answer: 1
+      },
+      {
+        q: "13. How does the scientific definition of 'theory' differ from the casual, everyday use of the word?",
+        options: [
+          "Everyday theories are supported by experiments, while scientific theories are hunches.",
+          "Everyday theories are casual guesses, whereas scientific theories are thoroughly tested explanations backed by empirical evidence.",
+          "There is no difference; both represent unproven ideas.",
+          "Everyday theories are written as equations, while scientific theories are written in text."
+        ],
+        answer: 1
+      },
+      {
+        q: "14. Are scientific laws absolute and immune to modification?",
+        options: [
+          "Yes; once an idea becomes a law, it can never be altered.",
+          "No; laws can be revised or bounded if new experimental conditions reveal exceptions.",
+          "Yes; laws are mathematical facts proven with absolute certainty.",
+          "No; laws automatically convert back into hypotheses every decade."
+        ],
+        answer: 1
+      },
+      {
+        q: "15. A scientist observes that increasing gas temperature causes gas pressure to rise (P/T = k). How should this discovery be classified?",
+        options: [
+          "Scientific Law, because it mathematically describes what happens to pressure and temperature.",
+          "Scientific Theory, because it explains subatomic particle collisions.",
+          "Scientific Hypothesis, because mathematical relationships cannot be laws.",
+          "Scientific Opinion, because gas behavior varies continuously."
+        ],
+        answer: 0
+      }
+    ];
+
+    const FUNNY_MESSAGES = [
+      "SPLAT! The Law of Conservation of Mass states your snake cannot pass through solid stone barriers!",
+      "CRASH! Even Kinetic Molecular Theory couldn't predict that sudden wall collision!",
+      "BOOM! You collided with a Scientific Fact! Obstacles are non-negotiable.",
+      "OUCH! Newton's Laws of Motion remain undefeated against solid obstacles!",
+      "SNAKE ERROR! You tried to turn a concrete barrier into a temporary hypothesis!"
+    ];
+
+    // -----------------------------------------------------------------
+    // 2. ENGINE & GAME STATE
+    // -----------------------------------------------------------------
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const GRID_SIZE = 20;
+    const TILE_COUNT = canvas.width / GRID_SIZE;
+
+    let snake = [];
+    let dx = 1, dy = 0, nextDx = 1, nextDy = 0;
+    let apple = { x: 15, y: 10 };
+    let obstacles = [
+      { x: 5, y: 5 }, { x: 5, y: 6 },
+      { x: 14, y: 14 }, { x: 14, y: 15 },
+      { x: 5, y: 14 }, { x: 14, y: 5 }
+    ];
+
+    let particles = [];
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let pendingGrowth = 0;
+    let isPaused = false;
+    let gameLoopTimer = null;
+    let currentTickInterval = 220; // Starts slow!
+
+    // Controls
+    document.addEventListener('keydown', (e) => {
+      if (isPaused) return;
+      if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') && dy === 0) { nextDx = 0; nextDy = -1; }
+      if ((e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && dy === 0) { nextDx = 0; nextDy = 1; }
+      if ((e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') && dx === 0) { nextDx = -1; nextDy = 0; }
+      if ((e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') && dx === 0) { nextDx = 1; nextDy = 0; }
+    });
+
+    function handleDpad(dir) {
+      if (isPaused) return;
+      if (dir === 'UP' && dy === 0) { nextDx = 0; nextDy = -1; }
+      if (dir === 'DOWN' && dy === 0) { nextDx = 0; nextDy = 1; }
+      if (dir === 'LEFT' && dx === 0) { nextDx = -1; nextDy = 0; }
+      if (dir === 'RIGHT' && dx === 0) { nextDx = 1; nextDy = 0; }
+    }
+
+    function resetGame() {
+      document.getElementById('gameOverModal').style.display = 'none';
+      document.getElementById('winModal').style.display = 'none';
+      
+      snake = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 },
+        { x: 7, y: 10 }
+      ];
+      dx = 1; dy = 0; nextDx = 1; nextDy = 0;
+      currentQuestionIndex = 0;
+      score = 0;
+      pendingGrowth = 0;
+      particles = [];
+      isPaused = false;
+      currentTickInterval = 220;
+
+      spawnApple();
+      updateStats();
+      startLoop();
+    }
+
+    function startLoop() {
+      if (gameLoopTimer) clearTimeout(gameLoopTimer);
+      runLoop();
+    }
+
+    function runLoop() {
+      if (!isPaused) {
+        gameTick();
+      }
+      gameLoopTimer = setTimeout(runLoop, currentTickInterval);
+    }
+
+    function calculateSpeed() {
+      // Speeds up progressively from 220ms down to 65ms
+      currentTickInterval = Math.max(65, 220 - (currentQuestionIndex * 11));
+      
+      let speedText = "1x (Slow)";
+      if (currentTickInterval <= 160 && currentTickInterval > 120) speedText = "1.5x (Medium)";
+      else if (currentTickInterval <= 120 && currentTickInterval > 85) speedText = "2x (Fast)";
+      else if (currentTickInterval <= 85) speedText = "3x (SUPER FAST!)";
+      
+      document.getElementById('speedStat').innerText = speedText;
+    }
+
+    function gameTick() {
+      dx = nextDx;
+      dy = nextDy;
+
+      const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+      // Wrap around grid boundaries
+      if (head.x < 0) head.x = TILE_COUNT - 1;
+      if (head.x >= TILE_COUNT) head.x = 0;
+      if (head.y < 0) head.y = TILE_COUNT - 1;
+      if (head.y >= TILE_COUNT) head.y = 0;
+
+      // Check collision with obstacles or self
+      const hitObstacle = obstacles.some(obs => obs.x === head.x && obs.y === head.y);
+      const hitSelf = snake.some(segment => segment.x === head.x && segment.y === head.y);
+
+      if (hitObstacle || hitSelf) {
+        triggerExplosion();
+        return;
+      }
+
+      snake.unshift(head);
+
+      // Check if Apple is Eaten
+      if (head.x === apple.x && head.y === apple.y) {
+        triggerQuestionModal();
+      } else {
+        if (pendingGrowth > 0) {
+          pendingGrowth--;
+        } else {
+          snake.pop();
+        }
+      }
+
+      draw();
+    }
+
+    // -----------------------------------------------------------------
+    // 3. EXPLOSION & GAME OVER LOGIC
+    // -----------------------------------------------------------------
+    function triggerExplosion() {
+      isPaused = true;
+      particles = [];
+
+      // Create explosion particles at each segment of the snake
+      snake.forEach(seg => {
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: (seg.x + 0.5) * GRID_SIZE,
+            y: (seg.y + 0.5) * GRID_SIZE,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            radius: Math.random() * 5 + 2,
+            color: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#38bdf8'][Math.floor(Math.random() * 5)],
+            life: 25
+          });
+        }
+      });
+
+      let explosionFrames = 0;
+      const animInterval = setInterval(() => {
+        // Clear screen and draw background/obstacles
+        ctx.fillStyle = '#020617';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#64748b';
+        obstacles.forEach(obs => {
+          ctx.fillRect(obs.x * GRID_SIZE + 1, obs.y * GRID_SIZE + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+        });
+
+        // Render & update particles
+        particles.forEach(p => {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.radius = Math.max(0, p.radius - 0.15);
+        });
+
+        explosionFrames++;
+        if (explosionFrames > 22) {
+          clearInterval(animInterval);
+          showGameOverModal();
+        }
+      }, 30);
+    }
+
+    function showGameOverModal() {
+      const randomMsg = FUNNY_MESSAGES[Math.floor(Math.random() * FUNNY_MESSAGES.length)];
+      document.getElementById('funnyText').innerText = randomMsg;
+      document.getElementById('gameOverStats').innerText = `Final Score: ${score} Points | Apples Eaten: ${currentQuestionIndex}/15`;
+      document.getElementById('gameOverModal').style.display = 'flex';
+    }
+
+    function draw() {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Grid Lines
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < TILE_COUNT; i++) {
+        ctx.beginPath(); ctx.moveTo(i * GRID_SIZE, 0); ctx.lineTo(i * GRID_SIZE, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * GRID_SIZE); ctx.lineTo(canvas.width, i * GRID_SIZE); ctx.stroke();
+      }
+
+      // Obstacles
+      ctx.fillStyle = '#64748b';
+      obstacles.forEach(obs => {
+        ctx.fillRect(obs.x * GRID_SIZE + 1, obs.y * GRID_SIZE + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+      });
+
+      // Apple
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc((apple.x + 0.5) * GRID_SIZE, (apple.y + 0.5) * GRID_SIZE, GRID_SIZE / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Snake Body
+      snake.forEach((segment, index) => {
+        ctx.fillStyle = index === 0 ? '#4ade80' : '#22c55e';
+        ctx.fillRect(segment.x * GRID_SIZE + 1, segment.y * GRID_SIZE + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+      });
+    }
+
+    function spawnApple() {
+      let valid = false;
+      while (!valid) {
+        const rx = Math.floor(Math.random() * TILE_COUNT);
+        const ry = Math.floor(Math.random() * TILE_COUNT);
+
+        const onSnake = snake.some(s => s.x === rx && s.y === ry);
+        const onObstacle = obstacles.some(o => o.x === rx && o.y === ry);
+
+        if (!onSnake && !onObstacle) {
+          apple = { x: rx, y: ry };
+          valid = true;
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // 4. QUIZ MODAL
+    // -----------------------------------------------------------------
+    function triggerQuestionModal() {
+      isPaused = true;
+      const qData = quizQuestions[currentQuestionIndex];
+
+      document.getElementById('modalProgress').innerText = `Question ${currentQuestionIndex + 1} of 15`;
+      document.getElementById('modalQuestion').innerText = qData.q;
+
+      const optionsContainer = document.getElementById('modalOptions');
+      optionsContainer.innerHTML = '';
+
+      document.getElementById('feedbackBanner').className = 'feedback-banner';
+      document.getElementById('feedbackBanner').style.display = 'none';
+      document.getElementById('continueBtn').style.display = 'none';
+
+      qData.options.forEach((optText, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.innerText = optText;
+        btn.onclick = () => selectAnswer(i, qData.answer, btn);
+        optionsContainer.appendChild(btn);
+      });
+
+      document.getElementById('quizModal').style.display = 'flex';
+    }
+
+    function selectAnswer(selectedIndex, correctIndex, selectedBtn) {
+      const allBtns = document.querySelectorAll('.option-btn');
+      allBtns.forEach(btn => btn.disabled = true);
+
+      const feedback = document.getElementById('feedbackBanner');
+      const continueBtn = document.getElementById('continueBtn');
+
+      if (selectedIndex === correctIndex) {
+        selectedBtn.classList.add('correct');
+        feedback.innerText = "✓ Correct! Your snake grows longer (+3 Segments).";
+        feedback.className = "feedback-banner correct";
+        
+        pendingGrowth += 3;
+        score += 100;
+      } else {
+        selectedBtn.classList.add('wrong');
+        allBtns[correctIndex].classList.add('correct');
+        feedback.innerText = "✗ Incorrect! The correct answer is highlighted in green. Your snake shrinks!";
+        feedback.className = "feedback-banner wrong";
+
+        if (snake.length > 2) {
+          snake.pop();
+          if (snake.length > 2) snake.pop();
+        }
+        score = Math.max(0, score - 25);
+      }
+
+      currentQuestionIndex++;
+      calculateSpeed();
+      updateStats();
+      continueBtn.style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('quizModal').style.display = 'none';
+
+      if (currentQuestionIndex >= quizQuestions.length) {
+        document.getElementById('winSummary').innerText = `Final Score: ${score} Points | Final Length: ${snake.length} Segments!`;
+        document.getElementById('winModal').style.display = 'flex';
+      } else {
+        spawnApple();
+        isPaused = false;
+      }
+    }
+
+    function updateStats() {
+      document.getElementById('applesStat').innerText = `${currentQuestionIndex} / 15`;
+      document.getElementById('lengthStat').innerText = snake.length;
+      document.getElementById('scoreStat').innerText = score;
+    }
+
+    // Launch Game
+    resetGame();
+  </script>
+</body>
+</html>
